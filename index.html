@@ -384,7 +384,8 @@ let SALT = null, ITER = KDF_ITER;
 let PENDING = null;      // данные, ожидающие создания хранилища
 let saving = Promise.resolve();
 let lastActive = Date.now(), hiddenAt = 0, failCount = 0;
-let PRIV = false;        // режим «скрыть суммы»
+// режим «скрыть данные»: прячет все числа; запоминается (сам флаг не является личными данными)
+let PRIV = (() => { try { return localStorage.getItem('finplan.priv') === '1'; } catch (e) { return false; } })();
 const UI = { tab:'home', portfolio:'pos', plan:'cal', note:null, opsFilter:'all', showDone:false, calcBudget:null };
 
 /* ---------- утилиты ---------- */
@@ -397,6 +398,11 @@ const fmt = (n, d = 0) => (n == null || !isFinite(n)) ? '—' : nf(d).format(n);
 const rub = (n, d = 0) => (n == null || !isFinite(n)) ? '—' : (PRIV ? '••• ₽' : fmt(n, d) + ' ₽');
 const sgn = (n, d = 0) => PRIV ? '•••' : (n > 0 ? '+' : n < 0 ? '−' : '') + fmt(Math.abs(n), d);
 const pct = (x, d = 1) => (x == null || !isFinite(x)) ? '—' : fmt(x * 100, d) + '%';
+/* В режиме «скрыть данные» заменяет каждое число в видимом тексте на «•••».
+   Теги, атрибуты (значения полей ввода, стили, координаты графиков), HTML-сущности
+   и подписи вариантов в выпадающих списках не трогаются — формы остаются рабочими. */
+const MASK_RE = /<option\b[^>]*>[^<]*<\/option>|<[^>]*>|&#?\w+;|\d(?:[\d   .,:\/-]*\d)?/g;
+const maskHtml = h => PRIV ? String(h).replace(MASK_RE, m => (m[0] === '<' || m[0] === '&') ? m : '•••') : h;
 const parseNum = v => {
   if (typeof v === 'number') return v;
   const s = String(v ?? '').replace(/[\s  ]/g, '').replace(',', '.');
@@ -785,7 +791,7 @@ function render() {
   }
   const C = calc();
   const views = { home: viewHome, portfolio: viewPortfolio, capital: viewCapital, plan: viewPlan, more: viewMore };
-  app.innerHTML = (views[UI.tab] || viewHome)(C) + navHtml();
+  app.innerHTML = maskHtml((views[UI.tab] || viewHome)(C)) + navHtml();
   if (UI.tab === 'portfolio' && UI.portfolio === 'buy') updCalc();
 }
 function navHtml() {
@@ -939,7 +945,7 @@ function updCalc() {
   const C = calc(), r = suggest(UI.calcBudget || 0, C);
   if (!r.rows.length) { out.innerHTML = '<div class="card empty">На эту сумму ничего не подобрать. Проверь цены и целевые веса.</div>'; return; }
   const after = Object.fromEntries(r.after.map(x => [x.id, x]));
-  out.innerHTML = `<div class="tbl-wrap"><table class="x"><thead><tr><th>Бумага</th><th class="num">Шт</th><th class="num">Цена</th><th class="num">Сумма</th></tr></thead><tbody>
+  out.innerHTML = maskHtml(`<div class="tbl-wrap"><table class="x"><thead><tr><th>Бумага</th><th class="num">Шт</th><th class="num">Цена</th><th class="num">Сумма</th></tr></thead><tbody>
     ${r.rows.map(x => `<tr><td><i class="dot" style="background:${asset(x.id).color}"></i> ${esc(aName(x.id))}</td><td class="num"><b>${fmt(x.qty)}</b></td><td class="num">${fmt(x.price, 2)}</td><td class="num">${rub(x.sum)}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="totals"><div><span>Акции</span><span>${rub(r.spent, 2)}</span></div><div><span>Комиссии</span><span>${rub(r.fees, 2)}</span></div>
@@ -949,7 +955,7 @@ function updCalc() {
     <div class="tbl-wrap"><table class="x"><thead><tr><th>Бумага</th><th class="num">Сейчас</th><th class="num">После</th><th class="num">Цель</th></tr></thead><tbody>
     ${C.stocks.filter(x => after[x.id]).map(x => { const a = after[x.id], dd = a.w - a.t;
       return `<tr><td>${esc(x.short || x.name)}</td><td class="num">${pct(x.weight)}</td><td class="num ${dd < -0.01 ? 'warn' : ''}">${pct(a.w)}</td><td class="num">${pct(a.t, 0)}</td></tr>`; }).join('')}
-    </tbody></table></div>`;
+    </tbody></table></div>`);
 }
 
 function viewCapital(C) {
@@ -1233,7 +1239,7 @@ function openBio() {
 /* ---------- шторки ---------- */
 function openSheet(title, body, type, attrs = '') {
   $('#sheet').innerHTML = `<div class="sheet-bg" data-act="sheetbg"><div class="sheet" ${type ? `data-type="${type}"` : ''} ${attrs}>
-    <div class="grab"></div><div class="sheet-h"><h2>${esc(title)}</h2><button class="iconbtn" data-act="closesheet" aria-label="Закрыть">${ICON.close}</button></div>${body}</div></div>`;
+    <div class="grab"></div><div class="sheet-h"><h2>${maskHtml(esc(title))}</h2><button class="iconbtn" data-act="closesheet" aria-label="Закрыть">${ICON.close}</button></div>${maskHtml(body)}</div></div>`;
 }
 function closeSheet() { $('#sheet').innerHTML = ''; }
 const sheetRoot = () => $('#sheet .sheet');
@@ -1595,7 +1601,7 @@ const H = {
   tab: el => { UI.tab = el.dataset.tab; UI.note = null; render(); scrollTo(0, 0); },
   tabto: el => { UI.tab = el.dataset.tab; if (el.dataset.sub) UI.portfolio = el.dataset.sub; render(); scrollTo(0, 0); },
   seg: el => { UI[el.dataset.page] = el.dataset.v; render(); },
-  priv: () => { PRIV = !PRIV; render(); },
+  priv: () => { PRIV = !PRIV; try { localStorage.setItem('finplan.priv', PRIV ? '1' : '0'); } catch (e) {} closeSheet(); render(); toast(PRIV ? 'Данные скрыты' : 'Данные показаны'); },
   lock: () => lock(),
   fab: () => openOp('buy'),
   optype: el => openOp(el.dataset.v),
