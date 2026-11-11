@@ -16,21 +16,90 @@
 <link rel="icon" href="icon-192.png">
 <title>ФинПлан</title>
 <style>
+/* ---------- темы ---------- */
+/* «Полночь» — тёмная по умолчанию (и тема «Авто» в тёмном режиме iPhone) */
 :root{
-  --bg:#0A0E15; --bg2:#10161F; --card:#141B27; --card2:#1B2433; --line:#243045;
+  --bg:#0A0E15; --bg2:#10161F; --card:rgba(20,27,39,.84); --card-solid:#141B27; --card2:#1B2433; --line:#243045;
   --text:#E9EEF7; --muted:#8B98AE; --accent:#5B8CFF; --accent2:#8B5CF6;
   --green:#2BD47D; --red:#FF6464; --amber:#FFB547; --navbg:rgba(10,14,21,.86);
+  --hero:linear-gradient(135deg,#2E5BFF 0%,#7B3FF2 100%);
+  --blob1:rgba(91,140,255,.20); --blob2:rgba(139,92,246,.18); --glow:rgba(91,92,255,.42);
   --r:18px; color-scheme:dark;
 }
+/* «Авто» в светлом режиме iPhone */
 @media (prefers-color-scheme: light){
-  :root{ --bg:#F2F4F8; --bg2:#E9EDF4; --card:#FFFFFF; --card2:#F1F4F9; --line:#E0E6EF;
-    --text:#0E1726; --muted:#66748A; --navbg:rgba(242,244,248,.88); color-scheme:light; }
+  :root{ --bg:#F2F4F8; --bg2:#E9EDF4; --card:rgba(255,255,255,.88); --card-solid:#FFFFFF; --card2:#F1F4F9; --line:#E0E6EF;
+    --text:#0E1726; --muted:#66748A; --navbg:rgba(242,244,248,.88);
+    --green:#12A866; --red:#E5484D; --amber:#C77A00;
+    --blob1:rgba(91,140,255,.14); --blob2:rgba(139,92,246,.12); --glow:rgba(91,92,255,.32); color-scheme:light; }
+}
+html[data-theme="midnight"]{
+  --bg:#0A0E15; --bg2:#10161F; --card:rgba(20,27,39,.84); --card-solid:#141B27; --card2:#1B2433; --line:#243045;
+  --text:#E9EEF7; --muted:#8B98AE; --accent:#5B8CFF; --accent2:#8B5CF6;
+  --green:#2BD47D; --red:#FF6464; --amber:#FFB547; --navbg:rgba(10,14,21,.86);
+  --hero:linear-gradient(135deg,#2E5BFF 0%,#7B3FF2 100%);
+  --blob1:rgba(91,140,255,.20); --blob2:rgba(139,92,246,.18); --glow:rgba(91,92,255,.42); color-scheme:dark;
+}
+html[data-theme="aurora"]{
+  --bg:#03121A; --bg2:#071C25; --card:rgba(8,32,42,.80); --card-solid:#0A2430; --card2:#0E2E3A; --line:#164453;
+  --text:#E4FFF9; --muted:#7DB4B8; --accent:#00E0A4; --accent2:#00A8FF;
+  --green:#3BF0B0; --red:#FF6B81; --amber:#FFC94D; --navbg:rgba(3,18,26,.86);
+  --hero:linear-gradient(135deg,#00C896 0%,#00A3FF 55%,#7A5CFF 100%);
+  --blob1:rgba(0,224,164,.22); --blob2:rgba(0,150,255,.22); --glow:rgba(0,200,170,.45); color-scheme:dark;
+}
+html[data-theme="sunset"]{
+  --bg:#150911; --bg2:#1E0F19; --card:rgba(40,18,31,.82); --card-solid:#28121F; --card2:#35182B; --line:#4D2339;
+  --text:#FFF0F3; --muted:#C894AA; --accent:#FF7A45; --accent2:#FF2E7E;
+  --green:#4BE39A; --red:#FF5470; --amber:#FFC24D; --navbg:rgba(21,9,17,.86);
+  --hero:linear-gradient(135deg,#FF9A3C 0%,#FF4E6A 50%,#B23CFF 100%);
+  --blob1:rgba(255,122,69,.24); --blob2:rgba(255,46,126,.22); --glow:rgba(255,80,110,.48); color-scheme:dark;
+}
+html[data-theme="neon"]{
+  --bg:#07051A; --bg2:#0D0A26; --card:rgba(20,14,52,.80); --card-solid:#140E34; --card2:#1B1446; --line:#2E246A;
+  --text:#F4EEFF; --muted:#A79CD8; --accent:#FF2BD6; --accent2:#00E5FF;
+  --green:#3DFFB0; --red:#FF4D7D; --amber:#FFD23F; --navbg:rgba(7,5,26,.86);
+  --hero:linear-gradient(135deg,#FF2BD6 0%,#7B2BFF 50%,#00E5FF 100%);
+  --blob1:rgba(255,43,214,.24); --blob2:rgba(0,229,255,.20); --glow:rgba(255,43,214,.52); color-scheme:dark;
+}
+html[data-theme="emerald"]{
+  --bg:#03110B; --bg2:#071A11; --card:rgba(12,36,25,.82); --card-solid:#0C2419; --card2:#113224; --line:#1D4935;
+  --text:#ECFFF4; --muted:#8FBDA3; --accent:#2EE59D; --accent2:#F5C542;
+  --green:#46F0A4; --red:#FF6B6B; --amber:#F5C542; --navbg:rgba(3,17,11,.86);
+  --hero:linear-gradient(135deg,#0B9E68 0%,#2EE59D 48%,#F5C542 100%);
+  --blob1:rgba(46,229,157,.20); --blob2:rgba(245,197,66,.17); --glow:rgba(46,229,157,.45); color-scheme:dark;
+}
+html[data-theme="ocean"]{
+  --bg:#E8F3FF; --bg2:#DCEAFB; --card:rgba(255,255,255,.86); --card-solid:#FFFFFF; --card2:#EDF5FF; --line:#CDDFF5;
+  --text:#0A2140; --muted:#58739A; --accent:#0A84FF; --accent2:#00BFD6;
+  --green:#0E9F6E; --red:#E5484D; --amber:#C77A00; --navbg:rgba(232,243,255,.88);
+  --hero:linear-gradient(135deg,#0A6CFF 0%,#00B4D8 60%,#2ED3A8 100%);
+  --blob1:rgba(10,132,255,.20); --blob2:rgba(0,191,214,.18); --glow:rgba(10,132,255,.36); color-scheme:light;
+}
+html[data-theme="sakura"]{
+  --bg:#FFF0F5; --bg2:#FFE3ED; --card:rgba(255,255,255,.86); --card-solid:#FFFFFF; --card2:#FFF1F6; --line:#F6D2E0;
+  --text:#3A0F24; --muted:#99607A; --accent:#FF4F8B; --accent2:#A855F7;
+  --green:#12A26A; --red:#E0335F; --amber:#C77700; --navbg:rgba(255,240,245,.88);
+  --hero:linear-gradient(135deg,#FF6FA3 0%,#FF4F8B 42%,#A855F7 100%);
+  --blob1:rgba(255,79,139,.20); --blob2:rgba(168,85,247,.16); --glow:rgba(255,79,139,.40); color-scheme:light;
+}
+html[data-theme="peach"]{
+  --bg:#FFF4EA; --bg2:#FFE8D6; --card:rgba(255,255,255,.86); --card-solid:#FFFFFF; --card2:#FFF2E7; --line:#F4DAC4;
+  --text:#3A1C0A; --muted:#9A6C50; --accent:#FF7A2F; --accent2:#FF3D6E;
+  --green:#14A06A; --red:#E23D5A; --amber:#C27000; --navbg:rgba(255,244,234,.88);
+  --hero:linear-gradient(135deg,#FF9A2E 0%,#FF6A3D 45%,#FF3D6E 100%);
+  --blob1:rgba(255,160,61,.24); --blob2:rgba(255,61,110,.16); --glow:rgba(255,110,60,.40); color-scheme:light;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--text);
+html{background:var(--bg)}
+html,body{margin:0;color:var(--text);
   font:15px/1.42 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-text-size-adjust:100%}
-body{min-height:100vh;overscroll-behavior-y:none}
+body{min-height:100vh;overscroll-behavior-y:none;background:transparent}
+/* цветные «пятна» на фоне — видны сквозь полупрозрачные карточки */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(900px 520px at -5% -8%, var(--blob1), transparent 62%),
+    radial-gradient(760px 540px at 108% 22%, var(--blob2), transparent 60%),
+    radial-gradient(820px 600px at 40% 115%, var(--blob1), transparent 62%)}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 input,select,textarea{font:inherit;font-size:16px;color:var(--text)}
 a{color:var(--accent)}
@@ -48,7 +117,7 @@ a{color:var(--accent)}
 
 /* ---------- карточки ---------- */
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px}
-.hero{background:linear-gradient(135deg,#2E5BFF 0%,#7B3FF2 100%);color:#fff;border:0;padding:20px;position:relative;overflow:hidden}
+.hero{background:var(--hero);color:#fff;border:0;padding:20px;position:relative;overflow:hidden}
 .hero::after{content:"";position:absolute;right:-60px;top:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.08)}
 .hero-l{font-size:13px;opacity:.8;font-weight:600}
 .hero-v{font-size:36px;font-weight:800;letter-spacing:-.03em;margin:2px 0 4px;font-variant-numeric:tabular-nums}
@@ -135,7 +204,7 @@ table.x{border-collapse:separate;border-spacing:0;font-size:13px;width:100%}
 .x tr:last-child td{border-bottom:0}
 .x .num{text-align:right}
 table.cap{min-width:1180px}
-.cap th:first-child,.cap td:first-child{position:sticky;left:0;z-index:2;background:var(--card);box-shadow:1px 0 0 var(--line)}
+.cap th:first-child,.cap td:first-child{position:sticky;left:0;z-index:2;background:var(--card-solid);box-shadow:1px 0 0 var(--line)}
 .cap th:first-child{background:var(--card2);z-index:3}
 .cap tbody tr{cursor:pointer}
 .cap tfoot td{font-weight:750;background:var(--card2)}
@@ -222,7 +291,7 @@ details[open] summary::after{content:"▴"}
 .nav-b{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;color:var(--muted);font-size:10.5px;font-weight:650}
 .nav-b.on{color:var(--accent)}
 .fab{position:fixed;z-index:21;right:max(16px, calc(50% - 264px));bottom:calc(env(safe-area-inset-bottom, 0px) + 78px);width:58px;height:58px;border-radius:20px;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:grid;place-items:center;box-shadow:0 10px 26px rgba(91,92,255,.42)}
+  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:grid;place-items:center;box-shadow:0 10px 26px var(--glow)}
 .fab .ic{width:28px;height:28px;stroke-width:2.4}
 
 /* ---------- шторка (формы) ---------- */
@@ -262,7 +331,7 @@ details[open] summary::after{content:"▴"}
 
 /* ---------- экраны входа ---------- */
 .gate{min-height:calc(100vh - 140px);display:flex;flex-direction:column;justify-content:center;padding:20px 4px}
-.logo{width:76px;height:76px;border-radius:22px;background:linear-gradient(135deg,#2E5BFF,#7B3FF2);display:grid;place-items:center;margin:0 0 18px;box-shadow:0 14px 34px rgba(91,92,255,.4)}
+.logo{width:76px;height:76px;border-radius:22px;background:var(--hero);display:grid;place-items:center;margin:0 0 18px;box-shadow:0 14px 34px var(--glow)}
 .logo svg{width:44px;height:44px}
 .gate h1{font-size:32px;margin:0 0 6px;letter-spacing:-.03em}
 .gate p{color:var(--muted);margin:0 0 18px}
@@ -271,6 +340,19 @@ details[open] summary::after{content:"▴"}
 .privacy{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:10px;font-size:13.5px;color:var(--muted)}
 .privacy li{display:flex;gap:10px} .privacy b{color:var(--text)}
 .hint{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:13.5px;margin-bottom:12px}
+
+/* ---------- выбор темы ---------- */
+.themes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.th{position:relative;text-align:left;border-radius:18px;padding:9px 9px 11px;border:2px solid var(--line);background:var(--card);overflow:hidden}
+.th.on{border-color:var(--accent);box-shadow:0 8px 22px var(--glow)}
+.th-pv{height:92px;border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;border:1px solid rgba(127,127,127,.18)}
+.th-hero{height:32px;border-radius:9px;box-shadow:0 4px 12px rgba(0,0,0,.18)}
+.th-row{display:flex;gap:6px}
+.th-row i{flex:1;height:15px;border-radius:6px}
+.th-n{font-weight:750;margin:9px 2px 0}
+.th-s{font-size:12px;color:var(--muted);margin:0 2px}
+.th-ok{position:absolute;top:15px;right:15px;width:26px;height:26px;border-radius:50%;background:#fff;color:#111;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.th-ok .ic{width:16px;height:16px;stroke-width:3}
 
 /* ---------- уведомления ---------- */
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 150px);z-index:60;pointer-events:none}
@@ -973,6 +1055,7 @@ function viewMore(C) {
     <div class="list">${notes.map((n, i) => `<button class="li" data-act="note" data-note="${esc(n.title)}"><span class="ico">${icons[i] || '📝'}</span><span>${esc(n.title)}</span><span class="chev">${ICON.chev}</span></button>`).join('') || '<div class="li muted">Заметок нет — их можно загрузить из файла данных</div>'}</div>
     <div class="lst-h">Данные</div>
     <div class="list">
+      <button class="li" data-act="themes"><span class="ico">🎨</span><span>Оформление<span class="sub">сейчас: ${esc((THEMES.find(t => t.id === currentTheme()) || THEMES[0]).name)} · всего ${THEMES.length} ${plural(THEMES.length, 'тема', 'темы', 'тем')}</span></span><span class="chev">${ICON.chev}</span></button>
       <button class="li" data-act="settings"><span class="ico">⚙️</span><span>Настройки<span class="sub">инфляция, цели, зарплата, комиссия</span></span><span class="chev">${ICON.chev}</span></button>
       <button class="li" data-act="export"><span class="ico">💾</span><span>Резервная копия<span class="sub">зашифрованный файл — сохрани в «Файлы»</span></span><span class="chev">${ICON.chev}</span></button>
       <button class="li" data-act="import"><span class="ico">📥</span><span>Загрузить файл<span class="sub">резервная копия или данные из Obsidian</span></span><span class="chev">${ICON.chev}</span></button>
@@ -1454,6 +1537,8 @@ const H = {
   note: el => { UI.tab = 'more'; UI.note = el.dataset.note; closeSheet(); render(); scrollTo(0, 0); },
   noteback: () => { UI.note = null; render(); },
   settings: () => openSettings(),
+  themes: () => openThemes(),
+  settheme: el => { applyTheme(el.dataset.v, true); openThemes(); },
   savesettings: () => { commit(s => { ['inflation','commissionPct','salary','expenses','capitalGoal','yearGoal','autoLockMin'].forEach(k => { s.settings[k] = parseNum(fval(k)); }); s.settings.yearGoalLabel = (fval('yearGoalLabel') || '').trim() || 'Цель на год'; if (!(s.settings.autoLockMin > 0)) s.settings.autoLockMin = 5; }); closeSheet(); toast('Сохранено'); },
   chpw: () => openChangePw(),
   savepw: () => changePw(),
@@ -1524,6 +1609,40 @@ document.addEventListener('visibilitychange', () => {
   else if (S && hiddenAt && Date.now() - hiddenAt > 60000) lock();
 });
 
+/* ---------- оформление ---------- */
+// Тема — не личные данные: хранится открыто, чтобы применяться уже на экране входа.
+const THEME_KEY = 'finplan.theme';
+const THEMES = [
+  { id:'auto',     name:'Авто',    sub:'как в iPhone',         bg:'linear-gradient(135deg,#0A0E15 50%,#F2F4F8 50%)', card:'rgba(127,127,127,.35)', hero:'linear-gradient(135deg,#2E5BFF,#7B3FF2)', a:'#5B8CFF', b:'#8B5CF6' },
+  { id:'midnight', name:'Полночь', sub:'синий · фиолетовый',   bg:'#0A0E15', card:'#1B2433', hero:'linear-gradient(135deg,#2E5BFF,#7B3FF2)', a:'#5B8CFF', b:'#8B5CF6' },
+  { id:'aurora',   name:'Аврора',  sub:'бирюза · лазурь',      bg:'#03121A', card:'#0E2E3A', hero:'linear-gradient(135deg,#00C896,#00A3FF 55%,#7A5CFF)', a:'#00E0A4', b:'#00A8FF' },
+  { id:'sunset',   name:'Закат',   sub:'оранжевый · розовый',  bg:'#150911', card:'#35182B', hero:'linear-gradient(135deg,#FF9A3C,#FF4E6A 50%,#B23CFF)', a:'#FF7A45', b:'#FF2E7E' },
+  { id:'neon',     name:'Неон',    sub:'маджента · циан',      bg:'#07051A', card:'#1B1446', hero:'linear-gradient(135deg,#FF2BD6,#7B2BFF 50%,#00E5FF)', a:'#FF2BD6', b:'#00E5FF' },
+  { id:'emerald',  name:'Изумруд', sub:'зелень · золото',      bg:'#03110B', card:'#113224', hero:'linear-gradient(135deg,#0B9E68,#2EE59D 48%,#F5C542)', a:'#2EE59D', b:'#F5C542' },
+  { id:'ocean',    name:'Океан',   sub:'светлая · голубая',    bg:'#E8F3FF', card:'#FFFFFF', hero:'linear-gradient(135deg,#0A6CFF,#00B4D8 60%,#2ED3A8)', a:'#0A84FF', b:'#00BFD6' },
+  { id:'sakura',   name:'Сакура',  sub:'светлая · розовая',    bg:'#FFF0F5', card:'#FFFFFF', hero:'linear-gradient(135deg,#FF6FA3,#FF4F8B 42%,#A855F7)', a:'#FF4F8B', b:'#A855F7' },
+  { id:'peach',    name:'Персик',  sub:'светлая · тёплая',     bg:'#FFF4EA', card:'#FFFFFF', hero:'linear-gradient(135deg,#FF9A2E,#FF6A3D 45%,#FF3D6E)', a:'#FF7A2F', b:'#FF3D6E' }
+];
+function currentTheme() { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch (e) { return 'auto'; } }
+function applyTheme(id, save) {
+  const t = THEMES.some(x => x.id === id) ? id : 'auto';
+  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  if (save) { try { localStorage.setItem(THEME_KEY, t); } catch (e) {} }
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta && bg) meta.setAttribute('content', bg);
+}
+function openThemes() {
+  const cur = currentTheme();
+  openSheet('Оформление', `<div class="themes">${THEMES.map(t => `<button class="th ${t.id === cur ? 'on' : ''}" data-act="settheme" data-v="${t.id}" aria-label="Тема ${esc(t.name)}">
+      <div class="th-pv" style="background:${t.bg}"><div class="th-hero" style="background:${t.hero}"></div>
+        <div class="th-row"><i style="background:${t.card}"></i><i style="background:${t.card}"></i></div>
+        <div class="th-row"><i style="background:${t.a}"></i><i style="background:${t.b}"></i></div></div>
+      ${t.id === cur ? `<span class="th-ok">${ICON.check}</span>` : ''}
+      <div class="th-n">${esc(t.name)}</div><div class="th-s">${esc(t.sub)}</div></button>`).join('')}</div>
+    <div class="note-hint" style="margin-top:12px">Тема хранится на этом устройстве без шифрования — в ней нет личных данных. Поэтому она видна уже на экране входа.</div>`);
+}
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyTheme(currentTheme(), false));
+
 /* ---------- уведомления ---------- */
 let toastT = null;
 function toast(msg, err) {
@@ -1535,6 +1654,7 @@ function toast(msg, err) {
 if (!window.crypto || !crypto.subtle) {
   document.getElementById('app').innerHTML = '<div class="gate"><h1>Нужен защищённый адрес</h1><p>Шифрование работает только по https:// (или на localhost). Открой приложение по защищённой ссылке.</p></div>';
 } else {
+  applyTheme(currentTheme(), false);
   render();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
