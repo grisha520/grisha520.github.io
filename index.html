@@ -1061,7 +1061,7 @@ function viewMore(C) {
   const icons = ['🏠','📈','🗓️','🇭🇰','🌍','🎓','📚','📝'];
   return `<div class="topbar"><h1>Ещё</h1></div>
     <div class="lst-h">Заметки из Obsidian</div>
-    <div class="list">${notes.map((n, i) => `<button class="li" data-act="note" data-note="${esc(n.title)}"><span class="ico">${icons[i] || '📝'}</span><span>${esc(n.title)}</span><span class="chev">${ICON.chev}</span></button>`).join('') || '<div class="li muted">Заметок нет — их можно загрузить из файла данных</div>'}</div>
+    <div class="list">${notes.map((n, i) => `<button class="li" data-act="note" data-note="${esc(n.title)}"><span class="ico">${/пользоваться/i.test(n.title) ? '📱' : (icons[i] || '📝')}</span><span>${esc(n.title)}</span><span class="chev">${ICON.chev}</span></button>`).join('') || '<div class="li muted">Заметок нет — их можно загрузить из файла данных</div>'}</div>
     <div class="lst-h">Данные</div>
     <div class="list">
       <button class="li" data-act="themes"><span class="ico">🎨</span><span>Оформление<span class="sub">сейчас: ${esc((THEMES.find(t => t.id === currentTheme()) || THEMES[0]).name)} · всего ${THEMES.length} ${plural(THEMES.length, 'тема', 'темы', 'тем')}</span></span><span class="chev">${ICON.chev}</span></button>
@@ -1591,8 +1591,8 @@ async function handleImport(text) {
   openSheet('Загрузить данные', `<p class="muted" style="margin-top:0">В файле: ${(obj.assets || []).length} активов, ${(obj.ops || []).length} операций, ${(obj.notes || []).length} заметок, ${(obj.months || []).length} шагов плана.</p>
     <button class="btn big" data-act="seedplan">Обновить только заметки и план</button>
     <div class="note-hint" style="margin-top:6px">Твои операции, цены и настройки сохранятся. Подходит, когда план в Obsidian поменялся.</div>
-    <button class="btn danger big" data-act="seedall">Заменить всё</button>
-    <div class="note-hint" style="margin-top:6px">Операции, введённые в приложении, пропадут.</div>`);
+    ${(obj.assets || []).length ? `<button class="btn danger big" data-act="seedall">Заменить всё</button>
+    <div class="note-hint" style="margin-top:6px">Операции, введённые в приложении, пропадут.</div>` : ''}`);
   sheetRoot()._seed = obj;
 }
 
