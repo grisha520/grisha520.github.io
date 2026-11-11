@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://iss.moex.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://iss.moex.com https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#0A0E15">
@@ -511,6 +511,7 @@ function normalize(st) {
     phases: Array.isArray(st.phases) ? st.phases : [],
     rules: Array.isArray(st.rules) ? st.rules : [],
     riskLegend: st.riskLegend || DEFAULT_LEGEND,
+    sync: st.sync || null,
     meta: Object.assign({ createdAt: new Date().toISOString() }, st.meta || {})
   };
   o.assets.forEach((a, i) => { a.risks = a.risks || {}; if (!a.color) a.color = PALETTE[i % PALETTE.length]; });
@@ -525,6 +526,7 @@ function emptyState() {
 function commit(fn, opts) {
   fn(S); S.meta.updatedAt = new Date().toISOString();
   persist(); if (!(opts && opts.noRender)) render();
+  if (!(opts && opts.noSync)) scheduleSync();
 }
 
 /* ---------- расчёты ---------- */
@@ -1066,6 +1068,7 @@ function viewMore(C) {
     <div class="list">
       <button class="li" data-act="themes"><span class="ico">🎨</span><span>Оформление<span class="sub">сейчас: ${esc((THEMES.find(t => t.id === currentTheme()) || THEMES[0]).name)} · всего ${THEMES.length} ${plural(THEMES.length, 'тема', 'темы', 'тем')}</span></span><span class="chev">${ICON.chev}</span></button>
       <button class="li" data-act="settings"><span class="ico">⚙️</span><span>Настройки<span class="sub">инфляция, цели, зарплата, комиссия</span></span><span class="chev">${ICON.chev}</span></button>
+      <button class="li" data-act="sync"><span class="ico">🔄</span><span>Синхронизация с Google<span class="sub">${esc(syncStatus())}</span></span><span class="chev">${ICON.chev}</span></button>
       <button class="li" data-act="export"><span class="ico">💾</span><span>Резервная копия<span class="sub">зашифрованный файл — сохрани в «Файлы»</span></span><span class="chev">${ICON.chev}</span></button>
       <button class="li" data-act="import"><span class="ico">📥</span><span>Загрузить файл<span class="sub">резервная копия или данные из Obsidian</span></span><span class="chev">${ICON.chev}</span></button>
       <button class="li" data-act="csv"><span class="ico">📄</span><span>Экспорт в CSV<span class="sub">для Excel — без шифрования</span></span><span class="chev">${ICON.chev}</span></button>
@@ -1105,7 +1108,7 @@ function viewSetup() {
     <button class="btn ghost big" data-act="startempty">Начать с чистого листа</button>
     <ul class="privacy">
       <li>🔐<span><b>Шифрование AES-256.</b> Данные хранятся только на этом устройстве, расшифровать их можно только твоим паролем.</span></li>
-      <li>📵<span><b>Без сервера.</b> Никаких аккаунтов, аналитики и сторонних библиотек. Ничего не отправляется в интернет.</span></li>
+      <li>📵<span><b>Без сервера.</b> Никаких аккаунтов, аналитики и сторонних библиотек. Ничего не отправляется в интернет, пока ты сам не включишь синхронизацию с Google-таблицей.</span></li>
       <li>📈<span><b>Котировки — по кнопке.</b> Цены можно подтянуть с Мосбиржи, в запросе уходят только тикеры.</span></li>
     </ul></div>`;
 }
@@ -1138,6 +1141,7 @@ async function unlockWith(pw) {
   const st = await decryptJSON(key, v.iv, v.ct);
   SALT = salt; ITER = v.kdf.iter; KEY = key; S = normalize(st); failCount = 0; lastActive = Date.now();
   render();
+  scheduleSync(); // при входе отправляем актуальные цифры в Google-таблицу (если синхронизация включена)
 }
 async function doUnlock() {
   const pw = $('#pw').value, err = $('#err'), go = $('#go'), v = readVault();
@@ -1154,7 +1158,77 @@ async function doUnlock() {
     setTimeout(() => { go.disabled = false; }, wait * 1000);
   }
 }
-function lock() { S = null; KEY = null; UI.note = null; bioAutoTried = false; closeSheet(); render(); }
+function lock() {
+  if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; syncNow(false); } // успеть отправить последние изменения
+  S = null; KEY = null; UI.note = null; bioAutoTried = false; closeSheet(); render();
+}
+
+/* ---------- синхронизация с Google-таблицей (только в одну сторону: приложение → таблица) ----------
+   Скрипт Google Apps Script в таблице «Портфель и риски» принимает цифры и обновляет существующие ячейки.
+   Адрес скрипта и ключ хранятся в зашифрованных данных. */
+let syncTimer = null, syncing = false, syncAgain = false;
+function syncOn() { return !!(S && S.sync && S.sync.enabled && S.sync.url && S.sync.token); }
+function scheduleSync() { if (!syncOn()) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => { syncTimer = null; syncNow(false); }, 2500); }
+function syncPayload() {
+  const C = calc(), tw = sum(C.stocks, x => +x.target || 0);
+  return {
+    token: S.sync.token,
+    settings: { inflation: S.settings.inflation, yearGoal: S.settings.yearGoal },
+    rows: C.A.map(a => ({
+      name: a.name,
+      position: a.kind === 'income' ? 0 : r2(a.cost),
+      cashflow: Math.round(a.cashflow),
+      risks: a.risks || {},
+      target: a.kind === 'stock' && tw ? Math.round((+a.target || 0) / tw * 10000) / 10000 : null
+    }))
+  };
+}
+async function syncNow(manual) {
+  if (!syncOn()) { if (manual) toast('Синхронизация не настроена', true); return; }
+  if (syncing) { syncAgain = true; return; }
+  syncing = true;
+  const url = S.sync.url, body = JSON.stringify(syncPayload()); // собираем данные сразу: к ответу приложение может быть уже заблокировано
+  let res = null, err = null;
+  try {
+    const r = await fetch(url, { method: 'POST', body, headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'follow', cache: 'no-store' });
+    res = await r.json();
+    if (!res.ok) err = res.error === 'auth' ? 'неверный ключ' : (res.error || 'ошибка таблицы');
+  } catch (e) { err = navigator.onLine === false ? 'нет интернета' : 'нет связи с Google'; }
+  syncing = false;
+  if (S && S.sync) {
+    S.sync.lastTry = new Date().toISOString();
+    if (err) { S.sync.lastErr = err; S.sync.pending = true; }
+    else { S.sync.lastOk = S.sync.lastTry; S.sync.lastErr = null; S.sync.pending = false; S.sync.missing = res.missing || []; }
+    persist();
+    if (UI.tab === 'more' && !UI.note && !$('#sheet').innerHTML) render();
+  }
+  if (manual) toast(err ? 'Не удалось: ' + err : 'Таблица обновлена' + (res.missing && res.missing.length ? ' · нет строк для: ' + res.missing.join(', ') : ''), !!err);
+  if (syncAgain) { syncAgain = false; scheduleSync(); }
+}
+const timeRu = iso => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+function syncStatus() {
+  const s = S && S.sync;
+  if (!s || !s.url) return 'не настроена';
+  if (!s.enabled) return 'выключена';
+  if (s.lastErr) return `⚠️ ${s.lastErr} · повторю при следующем входе`;
+  return s.lastOk ? `обновлено ${timeRu(s.lastOk)}` : 'ещё не отправлялось';
+}
+function openSync() {
+  const s = (S && S.sync) || {};
+  openSheet('Синхронизация с Google', `
+    <div class="hint">Приложение → Google-таблица «Портфель и риски» → Obsidian. Цифры отправляются при входе и после каждой операции; таблица в приложение ничего не присылает.</div>
+    <div class="card"><div class="kv">
+      <div><span>Статус</span><b>${esc(syncStatus())}</b></div>
+      <div><span>Последняя попытка</span><b>${esc(timeRu(s.lastTry))}</b></div>
+    </div>${s.missing && s.missing.length ? `<div class="note-hint" style="margin-top:8px">В таблице нет строк для: ${esc(s.missing.join(', '))}. Их нужно добавить в таблицу вручную — новые строки скрипт не создаёт.</div>` : ''}</div>
+    ${inputF('surl', 'Адрес скрипта (Apps Script)', s.url || '', 'placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off" autocorrect="off"')}
+    ${inputF('stoken', 'Секретный ключ', s.token || '', 'type="password" autocomplete="off"')}
+    <div class="note-hint">Проще всего не вводить вручную: Ещё → «Загрузить файл» → файл настроек синхронизации.</div>
+    <button class="btn big" data-act="syncsave">Сохранить и отправить сейчас</button>
+    ${s.url ? `<button class="btn ghost big" data-act="synctoggle">${s.enabled ? 'Выключить синхронизацию' : 'Включить синхронизацию'}</button>` : ''}
+    <div class="note-hint" style="margin-top:10px">⚠️ Таблица хранится в Google без шифрования приложения — её защищает твой Google-аккаунт. Включи в нём двухэтапную проверку и не открывай таблицу «по ссылке».</div>`);
+}
 
 /* ---------- вход по Face ID ----------
    Ключ доступа (passkey) с расширением PRF: после проверки Face ID устройство выдаёт секрет,
@@ -1574,6 +1648,14 @@ function openCsvWarn() {
 /* ---------- импорт ---------- */
 async function handleImport(text) {
   let obj; try { obj = JSON.parse(text); } catch (e) { return toast('Это не файл ФинПлана (ошибка JSON)', true); }
+  if (obj && obj.format === 'finplan-sync') {
+    if (!S) return toast('Сначала войди в приложение, потом загрузи файл синхронизации', true);
+    if (!/^https:\/\/script\.google\.com\//.test(obj.url || '') || !obj.token) return toast('В файле нет адреса скрипта или ключа', true);
+    commit(s => { s.sync = Object.assign({}, s.sync || {}, { url: obj.url, token: obj.token, enabled: true, lastErr: null }); }, { noSync: true });
+    toast('Синхронизация настроена — отправляю данные…');
+    syncNow(true);
+    return;
+  }
   const isVault = obj && obj.app === 'finplan' && obj.ct && obj.kdf, isSeed = obj && (obj.format === 'finplan-seed' || Array.isArray(obj.assets));
   if (!isVault && !isSeed) return toast('Файл не похож на данные ФинПлана', true);
   if (!S) {
@@ -1664,7 +1746,16 @@ const H = {
   create: () => doCreate(),
   unlock: () => doUnlock(),
   seedplan: () => { const o = sheetRoot()._seed; commit(s => { ['notes','months','baskets','timeline','phases','rules','goals'].forEach(k => { if (Array.isArray(o[k])) s[k] = o[k]; }); if (o.riskLegend) s.riskLegend = o.riskLegend; if (o.settings && o.settings.capitalGoal) s.settings.capitalGoal = o.settings.capitalGoal; }); closeSheet(); toast('Заметки и план обновлены'); },
-  seedall: () => { const o = sheetRoot()._seed; S = normalize(o); persist(); closeSheet(); render(); toast('Данные заменены'); },
+  seedall: () => { const o = sheetRoot()._seed, keep = S.sync; S = normalize(o); if (!S.sync) S.sync = keep; persist(); closeSheet(); render(); toast('Данные заменены'); scheduleSync(); },
+  sync: () => openSync(),
+  syncsave: () => {
+    const url = (fval('surl') || '').trim(), token = (fval('stoken') || '').trim();
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) return toast('Адрес должен быть вида https://script.google.com/macros/s/…/exec', true);
+    if (token.length < 16) return toast('Ключ слишком короткий', true);
+    commit(s => { s.sync = Object.assign({}, s.sync || {}, { url, token, enabled: true, lastErr: null }); }, { noSync: true });
+    closeSheet(); syncNow(true);
+  },
+  synctoggle: () => { commit(s => { s.sync.enabled = !s.sync.enabled; }, { noSync: true }); closeSheet(); toast(S.sync.enabled ? 'Синхронизация включена' : 'Синхронизация выключена'); if (S.sync.enabled) syncNow(true); },
   restorevault: async () => {
     const v = sheetRoot()._vault, btn = $('#rvbtn'); btn.disabled = true; btn.textContent = 'Расшифровка…';
     try { const st = await decryptJSON(await deriveKey(fval('bpw'), b64d(v.kdf.salt), v.kdf.iter), v.iv, v.ct); S = normalize(st); await persist(); closeSheet(); render(); toast('Восстановлено'); }
