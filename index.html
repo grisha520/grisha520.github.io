@@ -40,6 +40,21 @@ html[data-theme="midnight"]{
   --hero:linear-gradient(135deg,#2E5BFF 0%,#7B3FF2 100%);
   --blob1:rgba(91,140,255,.20); --blob2:rgba(139,92,246,.18); --glow:rgba(91,92,255,.42); color-scheme:dark;
 }
+/* «Оникс» — строгая тёмная в духе крипто-кошельков: почти чёрный фон, плоские графитовые карточки, лавандовый акцент */
+html[data-theme="onyx"]{
+  --bg:#000000; --bg2:#0B0B0D; --card:#151517; --card-solid:#151517; --card2:#1E1E21; --line:#2A2A2E;
+  --text:#FFFFFF; --muted:#8E8E93; --accent:#BBB0FF; --accent2:#BBB0FF;
+  --green:#6EC85C; --red:#FF5C5C; --amber:#FFBD42; --navbg:rgba(0,0,0,.90);
+  --hero:linear-gradient(160deg,#1C1A24 0%,#151517 70%);
+  --blob1:rgba(187,176,255,.05); --blob2:rgba(187,176,255,.03); --glow:rgba(187,176,255,.22); --r:16px; color-scheme:dark;
+}
+html[data-theme="onyx"] .btn:not(.ghost):not(.danger),
+html[data-theme="onyx"] .fab,
+html[data-theme="onyx"] .types button.on{background:#BBB0FF;color:#0A0A0A;border-color:#BBB0FF}
+html[data-theme="onyx"] .btn:not(.ghost):not(.danger){border-radius:999px}
+html[data-theme="onyx"] .hero{border:1px solid #2A2A2E}
+html[data-theme="onyx"] .hero::after{background:rgba(187,176,255,.06)}
+html[data-theme="onyx"] .tag{background:rgba(187,176,255,.12)}
 html[data-theme="aurora"]{
   --bg:#03121A; --bg2:#071C25; --card:rgba(8,32,42,.80); --card-solid:#0A2430; --card2:#0E2E3A; --line:#164453;
   --text:#E4FFF9; --muted:#7DB4B8; --accent:#00E0A4; --accent2:#00A8FF;
@@ -1817,7 +1832,8 @@ const THEME_KEY = 'finplan.theme';
 const THEMES = [
   { id:'auto',     name:'Авто',    sub:'как в iPhone',         bg:'linear-gradient(135deg,#0A0E15 50%,#F2F4F8 50%)', card:'rgba(127,127,127,.35)', hero:'linear-gradient(135deg,#2E5BFF,#7B3FF2)', a:'#5B8CFF', b:'#8B5CF6' },
   { id:'midnight', name:'Полночь', sub:'синий · фиолетовый',   bg:'#0A0E15', card:'#1B2433', hero:'linear-gradient(135deg,#2E5BFF,#7B3FF2)', a:'#5B8CFF', b:'#8B5CF6' },
-  { id:'aurora',   name:'Аврора',  sub:'бирюза · лазурь',      bg:'#03121A', card:'#0E2E3A', hero:'linear-gradient(135deg,#00C896,#00A3FF 55%,#7A5CFF)', a:'#00E0A4', b:'#00A8FF' },
+  { id:'onyx',     name:'Оникс',   sub:'чёрный · лавандовый',  bg:'#000000', card:'#1E1E21', hero:'linear-gradient(160deg,#1C1A24,#151517 70%)', a:'#BBB0FF', b:'#6EC85C' },
+  { id:'aurora',  name:'Аврора',  sub:'бирюза · лазурь',      bg:'#03121A', card:'#0E2E3A', hero:'linear-gradient(135deg,#00C896,#00A3FF 55%,#7A5CFF)', a:'#00E0A4', b:'#00A8FF' },
   { id:'sunset',   name:'Закат',   sub:'оранжевый · розовый',  bg:'#150911', card:'#35182B', hero:'linear-gradient(135deg,#FF9A3C,#FF4E6A 50%,#B23CFF)', a:'#FF7A45', b:'#FF2E7E' },
   { id:'neon',     name:'Неон',    sub:'маджента · циан',      bg:'#07051A', card:'#1B1446', hero:'linear-gradient(135deg,#FF2BD6,#7B2BFF 50%,#00E5FF)', a:'#FF2BD6', b:'#00E5FF' },
   { id:'emerald',  name:'Изумруд', sub:'зелень · золото',      bg:'#03110B', card:'#113224', hero:'linear-gradient(135deg,#0B9E68,#2EE59D 48%,#F5C542)', a:'#2EE59D', b:'#F5C542' },
