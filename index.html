@@ -527,6 +527,7 @@ function normalize(st) {
     rules: Array.isArray(st.rules) ? st.rules : [],
     riskLegend: st.riskLegend || DEFAULT_LEGEND,
     sync: st.sync || null,
+    strategy: st.strategy || null,
     meta: Object.assign({ createdAt: new Date().toISOString() }, st.meta || {})
   };
   o.assets.forEach((a, i) => { a.risks = a.risks || {}; if (!a.color) a.color = PALETTE[i % PALETTE.length]; });
@@ -592,16 +593,119 @@ function calc() {
     const v = sum(g.assets || [], id => byId[id] ? byId[id].cost : 0);
     return Object.assign({}, g, { value: v, pct: g.target ? Math.max(0, Math.min(1, v / g.target)) : 0 });
   });
+  const F = S.strategy ? forecast(goals) : null;
+  if (F) goals.forEach(g => { if (g.id in F.due && F.due[g.id] !== null) g.due = F.due[g.id]; });
   return {
-    A, byId, cap, stocks, stocksCost, stocksValue, byType, goals,
+    F, A, byId, cap, stocks, stocksCost, stocksValue, byType, goals,
     capital: sum(cap, 'cost'), market: sum(cap, 'value'),
     divMonthly: sum(stocks, 'cashflow'), cashflowTotal: sum(A, 'cashflow'),
     cashLike: sum(A.filter(isMoney), 'cost'),
     brokerCash: sum(A.filter(a => a.kind === 'broker'), 'cost')
   };
 }
-function nextMonth() {
+function nextMonth(C) {
+  if (C && C.F) return C.F.months[0] || null;
   return [...S.months].filter(m => !m.done).sort((a, b) => String(a.date).localeCompare(String(b.date)))[0] || null;
+}
+
+/* ---------- автоплан ----------
+   Если в данных есть стратегия (порядок целей и правила), будущие шаги не хранятся, а каждый раз
+   считаются заново от фактических остатков: любое пополнение или покупка сразу сдвигает план и сроки целей.
+   Стратегия: шаги по порядку; шаг активен, пока цель не набрала свою планку (upTo или цель целиком);
+   share — какую долю месячного взноса шаг может забрать (остаток идёт следующим шагам). */
+const isoD = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const payDate = (y, m, day) => new Date(y, m, Math.min(day, new Date(y, m + 1, 0).getDate()));
+const goalShort = g => g ? (g.short || String(g.name).split(/\s+[—–(«-]\s*|\s*\(/)[0]) : '—';
+const kRub = n => n >= 1000 && n % 1000 === 0 ? fmt(n / 1000) + 'к' : fmt(n);
+function forecast(goals) {
+  const st = S.strategy;
+  if (!st || !Array.isArray(st.steps) || !st.steps.length) return null;
+  const free = (+S.settings.salary || 0) - (+S.settings.expenses || 0), day = +st.payday || 30;
+  const G = Object.fromEntries(goals.map(g => [g.id, g]));
+  const steps = st.steps.filter(x => G[x.goal]).map(x => Object.assign({}, x, { cap: x.upTo != null ? +x.upTo : (+G[x.goal].target || 0) }));
+  const val = Object.fromEntries(goals.map(g => [g.id, g.value]));
+  const F = { months: [], start: {}, end: {}, due: {}, steps, free, finish: null, leftover: 0 };
+  steps.forEach((x, i) => { if (val[x.goal] >= x.cap - 0.5) F.end[i] = 'done'; });
+  // первый шаг — ближайшая зарплата после последнего выполненного шага (или после сегодняшней даты)
+  const last = S.months.filter(m => m.done).map(m => String(m.date)).sort().pop();
+  const base = last ? pd(last) : pd(todayISO());
+  let y = base.getFullYear(), mo = base.getMonth();
+  if (last ? payDate(y, mo, day) <= base : payDate(y, mo, day) < base) mo++;
+  for (let k = 0; k < 180 && free > 0; k++) {
+    if (steps.every((x, i) => F.end[i])) break;
+    const date = isoD(payDate(y, mo + k, day));
+    let left = free; const alloc = [], ms = [];
+    steps.forEach((x, i) => {
+      if (left <= 0 || F.end[i]) return;
+      let a = Math.min(x.cap - val[x.goal], left);
+      if (x.share) a = Math.min(a, Math.round(free * x.share));
+      if (!(a > 0)) return;
+      a = Math.round(a); val[x.goal] += a; left -= a;
+      const e = alloc.find(z => z.goal === x.goal); if (e) e.amount += a; else alloc.push({ goal: x.goal, label: goalShort(G[x.goal]), amount: a });
+      if (F.start[i] == null) F.start[i] = date;
+      if (val[x.goal] >= x.cap - 0.5) { F.end[i] = date; ms.push(x.milestone || `${goalShort(G[x.goal]).toLowerCase()} ${kRub(x.cap)} ✅`); }
+    });
+    if (!ms.length && alloc.length) {   // промежуточная веха — самая «маленькая» из копящихся целей
+      const z = alloc.slice().sort((a, b) => (+G[a.goal].target || 0) - (+G[b.goal].target || 0))[0];
+      ms.push(`${z.label.toLowerCase()} ${fmt(val[z.goal])}`);
+    }
+    // «всё готово» — когда закрыты основные цели (будущие, вроде Гонконга, идут дальше)
+    if (!F.finish && steps.every((x, i) => G[x.goal].future || F.end[i])) {
+      F.finish = date; F.leftover = left + sum(alloc.filter(a => G[a.goal].future), 'amount');
+      if (F.leftover > 0) ms.push(`дальше свободно ${fmt(F.leftover)}`);
+    }
+    F.months.push({ id: 'auto:' + date, date, alloc, milestone: ms.join(' · '), auto: true });
+  }
+  goals.forEach(g => {
+    const own = steps.map((x, i) => [x, i]).filter(([x]) => x.goal === g.id && x.cap >= (+g.target || 0));
+    if (own.length) { const e = F.end[own[own.length - 1][1]]; F.due[g.id] = e === 'done' ? null : (e || ''); }
+  });
+  return F;
+}
+// фазы и диаграмма сроков из прогноза
+function fcPhases(F) {
+  const out = [];
+  F.steps.forEach((x, i) => {
+    if (!x.phase) return;
+    let p = out.find(z => z.n === x.phase);
+    if (!p) { p = { n: x.phase, what: x.phaseText || '', ends: [] }; out.push(p); }
+    if (!p.what && x.phaseText) p.what = x.phaseText;
+    p.ends.push(F.end[i]);
+  });
+  return out.map(p => ({ n: p.n, what: p.what,
+    when: p.ends.every(e => e === 'done') ? '✅ готово' : p.ends.some(e => !e) ? '—' : 'до ' + dateShort(p.ends.filter(e => e !== 'done').sort().pop()) }));
+}
+function fcTimeline(F) {
+  const hist = S.timeline.filter(t => t.done).map(t => ({ name: t.name, section: t.section, s: pd(t.start).getTime(), e: pd(t.end).getTime(), done: true }));
+  const first = F.months[0] && F.months[0].date, today = pd(todayISO()).getTime(), day = +S.strategy.payday || 30;
+  const fut = [];
+  F.steps.forEach((x, i) => {
+    const st = F.start[i], en = F.end[i];
+    if (!st || !en || en === 'done') return;
+    const g = S.goals.find(z => z.id === x.goal) || {};
+    const sec = x.section || goalShort(g), d = pd(st);
+    const prev = hist.filter(t => t.section === sec).map(t => t.e).sort((a, b) => b - a)[0];   // продолжение уже пройденного этапа
+    const s0 = st === first ? (prev && prev < today ? prev : today) : payDate(d.getFullYear(), d.getMonth() - 1, day).getTime();
+    fut.push({ name: x.label || `${goalShort(g)} ${kRub(x.cap)}`, section: sec, s: s0, e: pd(en).getTime() });
+  });
+  const all = hist.concat(fut), secs = [...new Set(all.map(t => t.section))];
+  return secs.flatMap(sec => all.filter(t => t.section === sec));
+}
+function monthChips(m) {
+  if (Array.isArray(m.alloc)) return m.alloc.map(a => `<span class="chip">${esc(a.label)} ${rub(a.amount)}</span>`).join('');
+  return `${m.stocks ? `<span class="chip">Акции ${rub(m.stocks)}${m.stocksNote ? ' ' + esc(m.stocksNote) : ''}</span>` : ''}${m.cushion ? `<span class="chip">Подушка ${rub(m.cushion)}</span>` : ''}${m.other ? `<span class="chip">${esc(m.other)}</span>` : ''}`;
+}
+// сколько из шага идёт в акции и какую корзину под это подобрать по текущим ценам и весам
+function autoBasket(m, C) {
+  const sg = S.goals.find(g => (g.assets || []).some(id => (asset(id) || {}).kind === 'stock'));
+  const amt = sg ? sum(m.alloc.filter(a => a.goal === sg.id), 'amount') : 0;
+  if (!(amt > 0)) return null;
+  const r = suggest(amt, C);
+  return r.rows.length ? { amt, rows: r.rows, spent: r.spent, preset: Object.fromEntries(r.rows.map(x => [x.id, x.qty])) } : null;
+}
+function autoSnapshot(s, m) {
+  if (s.months.some(x => x.done && x.auto && x.date === m.date)) return;
+  s.months.push({ id: 'm' + uid(), n: '', date: m.date, alloc: m.alloc.map(a => Object.assign({}, a)), milestone: m.milestone, done: true, auto: true });
 }
 function riskProfile(C) {
   const base = C.cap.filter(a => a.cost > 0);
@@ -658,7 +762,7 @@ function splitRow(line) {
   return l.split('|').map(c => c.replace(/\u0000/g, '|').trim());
 }
 function md(src) {
-  const lines = String(src || '').replace(/\r/g, '').split('\n');
+  const lines = String(src || '').replace(/\r/g, '').replace(/%%[\s\S]*?%%/g, '').split('\n');
   let html = '', i = 0;
   const isList = l => /^\s*([-*+]|\d+[.)])\s+/.test(l);
   const isTableSep = l => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
@@ -824,8 +928,8 @@ function greet() { const h = new Date().getHours(); return h < 5 ? 'Доброй
 
 function viewHome(C) {
   const s = S.settings, free = s.salary - s.expenses, yearLeft = s.yearGoal - C.capital, dm = C.market - C.capital;
-  const next = nextMonth();
-  const tl = S.timeline.map(t => ({ name: t.name, section: t.section, s: pd(t.start).getTime(), e: pd(t.end).getTime(), done: t.done, milestone: t.milestone }));
+  const next = nextMonth(C);
+  const tl = C.F ? fcTimeline(C.F) : S.timeline.map(t => ({ name: t.name, section: t.section, s: pd(t.start).getTime(), e: pd(t.end).getTime(), done: t.done, milestone: t.milestone }));
   const types = Object.entries(C.byType).filter(([, v]) => v > 0).map(([k, v], i) => ({ label: k, value: v, color: PALETTE[i % PALETTE.length] }));
   return `
   <div class="topbar"><div><div class="eyebrow">${greet()}</div><h1>ФинПлан</h1></div>
@@ -844,7 +948,7 @@ function viewHome(C) {
     ${stat('Дивиденды', rub(C.divMonthly) + '<span class="muted small"> /мес</span>', `≈ ${pct(C.stocksCost ? C.divMonthly * 12 / C.stocksCost : 0)} годовых до налога`)}
     ${stat(`Инфляция ${fmt(s.inflation, 1)}%`, '−' + rub(C.cashLike * s.inflation / 100) + '<span class="muted small"> /год</span>', 'съедает с рублёвого кэша')}
   </div>
-  ${next ? nextCard(next) : ''}
+  ${next ? nextCard(next, C) : ''}
   <h2 class="sec">Цели</h2>
   ${C.goals.filter(g => !g.future).map(goalRow).join('') || '<div class="card muted">Целей пока нет</div>'}
   <h2 class="sec">Сроки</h2>
@@ -852,9 +956,22 @@ function viewHome(C) {
   <h2 class="sec">Структура капитала</h2>
   <div class="card">${donut(types, { money: true, label: rub(C.capital), sub: 'всего' })}</div>`;
 }
-function nextCard(m) {
+function nextCard(m, C) {
   const d = daysTo(m.date);
   const when = d === 0 ? 'сегодня' : d > 0 ? `через ${d} ${plural(d, 'день', 'дня', 'дней')}` : `просрочено на ${-d} ${plural(d, 'день', 'дня', 'дней')}`;
+  if (m.auto) {
+    const b = autoBasket(m, C);
+    return `<section class="card">
+    <div class="row-sb"><div><div class="eyebrow">Следующий шаг</div><div class="h3">${dateRu(m.date)}</div></div><span class="pill ${d < 0 ? 'down' : ''}">${when}</span></div>
+    <div class="chips">${monthChips(m)}</div>
+    ${b ? `<div class="muted small" style="margin-top:8px">Корзина на ${rub(b.amt)} по текущим ценам и весам · ≈ ${rub(b.spent)}</div>
+      <div class="chips">${b.rows.map(r => `<span class="chip soft">${esc(aName(r.id))} ${r.qty}</span>`).join('')}</div>` : ''}
+    ${m.milestone ? `<div class="ms">🏁 ${inline(m.milestone)}</div>` : ''}
+    <div class="note-hint" style="margin-top:8px">Шаг считается от того, что уже есть: любое пополнение или покупка сразу пересчитывает план и сроки.</div>
+    <div class="btns">${b ? `<button class="btn" data-act="monthbuy" data-id="${esc(m.id)}">Записать покупку</button>` : ''}
+      <button class="btn ghost" data-act="monthdone" data-id="${esc(m.id)}">${ICON.check} Выполнено</button></div>
+  </section>`;
+  }
   const items = m.basket ? Object.entries(m.basket).filter(([, q]) => q > 0) : [];
   const cost = sum(items, ([id, q]) => q * ((asset(id) || {}).price || 0));
   return `<section class="card">
@@ -1028,9 +1145,14 @@ function viewPlan(C) {
   const head = `<div class="topbar"><h1>План</h1></div>` + seg('plan', [['cal','Календарь'],['goals','Цели'],['baskets','Корзины']]);
   if (UI.plan === 'goals') return head + viewGoals(C);
   if (UI.plan === 'baskets') return head + viewBaskets(C);
-  const ms = [...S.months].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const next = nextMonth(), doneN = ms.filter(m => m.done).length;
-  let html = head + `<button class="chip" data-act="showdone" style="margin-bottom:6px">${UI.showDone ? 'Скрыть выполненные' : `Показать выполненные (${doneN})`}</button>`;
+  const F = C.F;
+  const ms = (F ? S.months.filter(m => m.done).concat(F.months) : [...S.months]).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const next = nextMonth(C), doneN = ms.filter(m => m.done).length;
+  let html = head + (F ? `<div class="card"><div class="kv">
+      <div><span>Взнос</span><b>${rub(F.free)} каждое ${+S.strategy.payday || 30} число</b></div>
+      <div><span>Всё готово</span><b>${F.finish ? dateRu(F.finish) : '—'}</b></div></div>
+      <div class="note-hint" style="margin-top:8px">Будущие шаги пересчитываются сами от фактических остатков. Отметь шаг «Выполнено», когда разложил деньги этого числа.</div></div>` : '')
+    + `<button class="chip" data-act="showdone" style="margin-bottom:6px">${UI.showDone ? 'Скрыть выполненные' : `Показать выполненные (${doneN})`}</button>`;
   let yr = null;
   for (const m of ms) {
     if (m.done && !UI.showDone) continue;
@@ -1039,20 +1161,21 @@ function viewPlan(C) {
     const d = pd(m.date), items = m.basket ? Object.entries(m.basket).filter(([, q]) => q > 0) : [];
     html += `<div class="month ${m.done ? 'done' : ''} ${next && next.id === m.id ? 'now' : ''}">
       <div class="mdate"><b>${d.getDate()}</b><span>${MONTHS_S[d.getMonth()]}</span></div>
-      <div class="mbody" data-act="month" data-id="${esc(m.id)}">
+      <div class="mbody" ${m.auto ? '' : `data-act="month" data-id="${esc(m.id)}"`}>
         <div class="mt">${m.n ? `Шаг ${esc(m.n)}` : 'Шаг'}${m.milestone ? ` · ${inline(m.milestone)}` : ''}</div>
-        <div class="chips">${m.stocks ? `<span class="chip">Акции ${rub(m.stocks)}${m.stocksNote ? ' ' + esc(m.stocksNote) : ''}</span>` : ''}${m.cushion ? `<span class="chip">Подушка ${rub(m.cushion)}</span>` : ''}${m.other ? `<span class="chip">${esc(m.other)}</span>` : ''}</div>
+        <div class="chips">${monthChips(m)}</div>
         ${items.length ? `<div class="muted small" style="margin-top:6px">${esc(m.basketLabel || 'Корзина')}: ${items.map(([id, q]) => `${esc(aName(id))} ${q}`).join(' · ')}</div>` : (m.basketLabel ? `<div class="muted small" style="margin-top:6px">${esc(m.basketLabel)}</div>` : '')}
       </div>
       <button class="mchk ${m.done ? 'on' : ''}" data-act="monthdone" data-id="${esc(m.id)}" aria-label="Выполнено">${m.done ? ICON.check : ''}</button></div>`;
   }
-  return html + `<button class="btn ghost big" data-act="addmonth">${ICON.plus} Добавить шаг</button>`;
+  return html + (F ? '' : `<button class="btn ghost big" data-act="addmonth">${ICON.plus} Добавить шаг</button>`);
 }
 function viewGoals(C) {
-  const tl = S.timeline.map(t => ({ name: t.name, section: t.section, s: pd(t.start).getTime(), e: pd(t.end).getTime(), done: t.done, milestone: t.milestone }));
+  const tl = C.F ? fcTimeline(C.F) : S.timeline.map(t => ({ name: t.name, section: t.section, s: pd(t.start).getTime(), e: pd(t.end).getTime(), done: t.done, milestone: t.milestone }));
+  const phases = C.F ? fcPhases(C.F) : S.phases;
   const tg = C.goals.filter(g => !g.future).map((g, i) => ({ label: g.name, value: g.target, color: PALETTE[i % PALETTE.length] }));
-  return `${S.phases.length ? `<div class="tbl-wrap"><table class="x"><thead><tr><th>Фаза</th><th>Что делаем</th><th>Когда</th></tr></thead><tbody>
-    ${S.phases.map(p => `<tr><td><b>${esc(p.n)}</b></td><td style="white-space:normal">${inline(p.what)}</td><td>${inline(p.when)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+  return `${phases.length ? `<div class="tbl-wrap"><table class="x"><thead><tr><th>Фаза</th><th>Что делаем</th><th>Когда</th></tr></thead><tbody>
+    ${phases.map(p => `<tr><td><b>${esc(p.n)}</b></td><td style="white-space:normal">${inline(p.what)}</td><td>${inline(p.when)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     ${C.goals.map(goalRow).join('')}
     <h2 class="sec">Сроки</h2><div class="card">${ganttSvg(tl)}</div>
     <h2 class="sec">Целевая структура</h2><div class="card">${donut(tg, { money: true, label: rub(S.settings.capitalGoal), sub: 'цель' })}</div>`;
@@ -1195,7 +1318,25 @@ function syncPayload() {
       cashflow: Math.round(a.cashflow),
       risks: a.risks || {},
       target: a.kind === 'stock' && tw ? Math.round((+a.target || 0) / tw * 10000) / 10000 : null
-    }))
+    })),
+    plan: planPayload(C)
+  };
+}
+// компактный снимок плана для Obsidian: цели, фазы, сроки и шаги (история + прогноз)
+function planPayload(C) {
+  if (!C.F) return null;
+  const F = C.F;
+  const hist = S.months.filter(m => m.done).sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .map(m => [m.date, Array.isArray(m.alloc) ? m.alloc.map(a => [a.label, a.amount])
+      : [['Акции', +m.stocks || 0], ['Подушка', +m.cushion || 0]].filter(x => x[1]).concat(m.other ? [[m.other, 0]] : []), m.milestone || '', 1]);
+  const fut = F.months.map(m => [m.date, m.alloc.map(a => [a.label, a.amount]), m.milestone, 0]);
+  return {
+    u: new Date().toISOString(), free: F.free, payday: +S.strategy.payday || 30, finish: F.finish, left: F.leftover,
+    capital: Math.round(C.capital), goal: +S.settings.capitalGoal || 0,
+    g: C.goals.map(g => [g.name, Math.round(g.value), +g.target || 0, g.pct >= 1 ? 'ok' : (g.due || ''), g.future ? 1 : 0]),
+    ph: fcPhases(F).map(p => [p.n, p.what, p.when]),
+    tl: fcTimeline(F).map(t => [t.section, t.name, isoD(new Date(t.s)), isoD(new Date(t.e)), t.done ? 1 : 0]),
+    s: hist.concat(fut)
   };
 }
 async function syncNow(manual) {
@@ -1474,10 +1615,13 @@ function saveOp() {
     out.push({ type:'adjust', assetId:id, dq: Math.round(dq * 1e6) / 1e6, dc: r2(dc) });
   }
   const markDone = monthId && fval('markdone');
+  let autoM = null;
+  if (markDone && monthId.startsWith('auto:')) { const C0 = calc(); autoM = C0.F && C0.F.months.find(x => x.id === monthId); }
   commit(s => {
     if (editId) { const i = s.ops.findIndex(o => o.id === editId); if (i >= 0) s.ops[i] = Object.assign({ id: editId, ts: s.ops[i].ts }, out[0], { date, note }); }
     else out.forEach((o, k) => { const n = o._note || note; delete o._note; s.ops.push(Object.assign({ id: uid(), ts: Date.now() + k, date, note: n }, o)); });
-    if (markDone) { const m = s.months.find(x => x.id === monthId); if (m) m.done = true; }
+    if (markDone && autoM) autoSnapshot(s, autoM);
+    else if (markDone) { const m = s.months.find(x => x.id === monthId); if (m) m.done = true; }
   });
   closeSheet();
   toast(editId ? 'Сохранено' : out.length > 1 ? `Записано операций: ${out.length}` : 'Записано');
@@ -1722,8 +1866,21 @@ const H = {
   savemonth: el => saveMonth(el.dataset.id || null),
   delmonth: el => { $('#delzone').innerHTML = `<div class="confirm">Удалить шаг плана?<div class="btns"><button class="btn danger" data-act="delmonthyes" data-id="${esc(el.dataset.id)}">Удалить</button><button class="btn ghost" data-act="closesheet">Отмена</button></div></div>`; },
   delmonthyes: el => { commit(s => { s.months = s.months.filter(m => m.id !== el.dataset.id); }); closeSheet(); },
-  monthdone: el => { commit(s => { const m = s.months.find(x => x.id === el.dataset.id); if (m) m.done = !m.done; }); },
-  monthbuy: el => { const m = S.months.find(x => x.id === el.dataset.id); if (m && m.basket) openOp('buy', { preset: m.basket, monthId: m.id }); },
+  monthdone: el => {
+    const id = el.dataset.id;
+    if (id.startsWith('auto:')) {
+      const C = calc(), m = C.F && C.F.months.find(x => x.id === id); if (!m) return;
+      commit(s => autoSnapshot(s, m)); toast('Шаг отмечен — план считается от следующего числа'); return;
+    }
+    commit(s => { const i = s.months.findIndex(x => x.id === id); if (i < 0) return;
+      if (s.months[i].auto && s.strategy) s.months.splice(i, 1); else s.months[i].done = !s.months[i].done; });
+  },
+  monthbuy: el => {
+    const id = el.dataset.id;
+    if (id.startsWith('auto:')) { const C = calc(), m = C.F && C.F.months.find(x => x.id === id), b = m && autoBasket(m, C);
+      if (b) openOp('buy', { preset: b.preset, monthId: id }); return; }
+    const m = S.months.find(x => x.id === id); if (m && m.basket) openOp('buy', { preset: m.basket, monthId: m.id });
+  },
   basketbuy: el => { const b = S.baskets.find(x => x.id === el.dataset.id); if (b) openOp('buy', { preset: b.items }); },
   showdone: () => { UI.showDone = !UI.showDone; render(); },
   calcrecord: () => { const r = suggest(UI.calcBudget || 0, calc()); const preset = {}, prices = {}; r.rows.forEach(x => { preset[x.id] = x.qty; prices[x.id] = x.price; }); openOp('buy', { preset, prices }); },
@@ -1760,7 +1917,9 @@ const H = {
   cancelsetup: () => { PENDING = null; render(); },
   create: () => doCreate(),
   unlock: () => doUnlock(),
-  seedplan: () => { const o = sheetRoot()._seed; commit(s => { ['notes','months','baskets','timeline','phases','rules','goals'].forEach(k => { if (Array.isArray(o[k])) s[k] = o[k]; }); if (o.riskLegend) s.riskLegend = o.riskLegend; if (o.settings && o.settings.capitalGoal) s.settings.capitalGoal = o.settings.capitalGoal; }); closeSheet(); toast('Заметки и план обновлены'); },
+  seedplan: () => { const o = sheetRoot()._seed; commit(s => { const mine = s.months.filter(m => m.done && m.auto);
+    ['notes','months','baskets','timeline','phases','rules','goals'].forEach(k => { if (Array.isArray(o[k])) s[k] = o[k]; });
+    if (o.strategy) { s.strategy = o.strategy; s.months = s.months.filter(m => m.done).concat(mine.filter(m => !s.months.some(x => x.done && x.date === m.date))); } if (o.riskLegend) s.riskLegend = o.riskLegend; if (o.settings && o.settings.capitalGoal) s.settings.capitalGoal = o.settings.capitalGoal; }); closeSheet(); toast('Заметки и план обновлены'); },
   seedall: () => { const o = sheetRoot()._seed, keep = S.sync; S = normalize(o); if (!S.sync) S.sync = keep; persist(); closeSheet(); render(); toast('Данные заменены'); scheduleSync(); },
   sync: () => openSync(),
   syncsave: () => {
